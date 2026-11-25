@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Multi-Model Weather">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10161d" media="(prefers-color-scheme: dark)">
+<title>Multi-Model Weather</title>
+<style>
+  /* Layout: one phone-width column. Alerts, Now, 48-hour charts, then one card per day with model ranges and the NWS number as anchor. */
+  :root {
+    --bg: #eef2f6;
+    --panel: #ffffff;
+    --fg: #14202b;
+    --muted: #5d6b79;
+    --line: #d6dee6;
+    --accent: #1f6fd1;
+    --nws: #c4570f;
+    --band: #cfe0f6;
+    --warn: #a4580a;
+    --warnbg: #fdf0e0;
+    --m1: #1f6fd1; --m2: #0f8f6b; --m3: #8a4fc7; --m4: #b8860b;   /* GFS, ECMWF, GEM, ICON */
+    color-scheme: light;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10161d; --panel: #18212b; --fg: #e8eef4; --muted: #93a1af; --line: #2a3643;
+      --accent: #6aa8f0; --nws: #f0903f; --band: #26405e; --warn: #e6a050; --warnbg: #3a2a16;
+      --m1: #6aa8f0; --m2: #3fcfa0; --m3: #b78cf0; --m4: #e8c34a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10161d; --panel: #18212b; --fg: #e8eef4; --muted: #93a1af; --line: #2a3643;
+    --accent: #6aa8f0; --nws: #f0903f; --band: #26405e; --warn: #e6a050; --warnbg: #3a2a16;
+    --m1: #6aa8f0; --m2: #3fcfa0; --m3: #b78cf0; --m4: #e8c34a;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.45 var(--font);
+    padding-block: max(14px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-bottom, 0px));
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  main { max-width: 640px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+  h1 { font-size: 1.15rem; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: .85rem; margin-top: 2px; }
+  button {
+    font: inherit; font-size: .85rem; color: var(--fg); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-height: 40px; cursor: pointer;
+  }
+  button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .where-form { display: flex; gap: 8px; }
+  .where-form input {
+    flex: 1 1 0; min-width: 0; font: inherit; font-size: 1rem; color: var(--fg); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-height: 40px;
+  }
+  .where-form input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .where-form button { flex: 0 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; min-width: 0; }
+  .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  .alert { background: var(--warnbg); border-color: var(--warn); }
+  .alert b { color: var(--warn); }
+  .alert p { margin: 4px 0 0; font-size: .88rem; }
+  details.alert { margin-top: 0; padding: 16px; border-top: 1px solid var(--warn); }
+  details.alert summary { list-style: none; color: var(--fg); }
+  details.alert summary::-webkit-details-marker { display: none; }
+  details.alert summary .label { display: block; color: var(--warn); }
+  details.alert summary::after { content: "Show details ▾"; display: block; margin-top: 6px; font-size: .8rem; color: var(--warn); }
+  details.alert[open] summary::after { content: "Hide details ▴"; }
+  .adetail { margin-top: 10px; border-top: 1px solid var(--warn); padding-top: 8px; }
+  .adetail .pre { white-space: pre-line; }
+  .now { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .big { font-size: 3rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .now .cond { font-size: 1.05rem; }
+  .meta { color: var(--muted); font-size: .88rem; margin: 8px 0 0; }
+  .flag { color: var(--warn); font-weight: 600; }
+  .chart { width: 100%; height: auto; display: block; }
+  .chart text { fill: var(--muted); font: 10px var(--font); }
+  .chart .bar { fill: var(--accent); }
+  .chart .grid { stroke: var(--line); stroke-width: 1; }
+  .chart .band { fill: var(--band); }
+  .chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+  .chart .day { fill: var(--fg); font-weight: 600; }
+  .sub-label { font-size: .78rem; color: var(--muted); margin: 10px 0 2px; }
+  .day { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; min-width: 0; }
+  .day-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .day-head b { font-size: 1.02rem; }
+  .nwsline { color: var(--muted); font-size: .85rem; }
+  .nwsline em { font-style: normal; color: var(--nws); font-weight: 600; }
+  .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 14px; margin-top: 10px; }
+  .m .k { font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+  .m .v { font-size: 1.35rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
+  .m .r { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .m.dis .r { color: var(--warn); font-weight: 600; }
+  details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+  summary { cursor: pointer; font-size: .85rem; color: var(--muted); min-height: 28px; }
+  .tbl { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: .85rem; }
+  th, td { text-align: right; padding: 6px 4px; border-top: 1px solid var(--line); white-space: nowrap; }
+  th { font-weight: 500; color: var(--muted); border-top: 0; font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; }
+  th:first-child, td:first-child { text-align: left; padding-left: 0; }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 7px; vertical-align: -1px; }
+  .sw.nwsbar { width: 3px; height: 12px; border-radius: 2px; margin: 0 9px 0 3.5px; background: var(--nws); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .78rem; color: var(--muted); margin-top: 10px; }
+  .legend i { display: inline-block; vertical-align: -1px; margin-right: 5px; }
+  .legend .d { width: 10px; height: 10px; border-radius: 50%; }
+  .legend .b { width: 14px; height: 8px; border-radius: 4px; background: var(--band); }
+  .legend .n { width: 3px; height: 12px; background: var(--nws); border-radius: 2px; }
+  .err { color: var(--warn); font-size: .88rem; margin: 0; }
+  .foot { color: var(--muted); font-size: .75rem; }
+  .foot a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Multi-Model Weather</h1>
+      <div class="sub" id="where">St. Louis, MO</div>
+    </div>
+    <button id="refresh" type="button">Refresh</button>
+  </header>
+
+  <form class="where-form" id="zipForm" autocomplete="off">
+    <input id="zip" name="zip" type="text" inputmode="numeric" pattern="[0-9]{5}" maxlength="5" placeholder="ZIP code" aria-label="ZIP code">
+    <button id="go" type="submit">Go</button>
+    <button id="loc" type="button">Use my location</button>
+  </form>
+  <p class="err" id="err" hidden></p>
+
+  <div id="alerts"></div>
+
+  <section class="panel" aria-live="polite">
+    <p class="label">Now</p>
+    <div id="now"><span class="sub">Loading…</span></div>
+  </section>
+
+  <section class="panel">
+    <p class="label">Next 48 hours</p>
+    <p class="sub-label" style="margin-top:0">Temperature, °F. Shaded band is the range across models, line is the median.</p>
+    <svg class="chart" id="tchart" viewBox="0 0 360 146" role="img" aria-label="Hourly temperature, range across models"></svg>
+    <p class="sub-label">Rain and melted snow, inches per hour (median of models)</p>
+    <svg class="chart" id="pchart" viewBox="0 0 360 92" role="img" aria-label="Hourly precipitation, median of models"></svg>
+  </section>
+
+  <section>
+    <p class="label" style="padding-left:2px">7-day forecast</p>
+    <div id="days" style="display:grid;gap:14px"></div>
+    <div class="legend" id="legend" hidden></div>
+  </section>
+
+  <p class="foot">Models: GFS, ECMWF, Canadian GEM and German ICON via <a href="https://open-meteo.com/">Open-Meteo</a>. Big numbers are the median of the models, with the range underneath. NWS numbers are forecaster-adjusted, so treat them as the anchor. Raw model snow runs high when the ground is warm.</p>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var MODELS = [
+    { id: "gfs_seamless",  name: "American (GFS)",   short: "GFS",   color: "var(--m1)" },
+    { id: "ecmwf_ifs025",  name: "European (ECMWF)", short: "ECMWF", color: "var(--m2)" },
+    { id: "gem_seamless",  name: "Canadian (GEM)",   short: "GEM",   color: "var(--m3)" },
+    { id: "icon_seamless", name: "German (ICON)",    short: "ICON",  color: "var(--m4)" }
+  ];
+  var place = { name: "St. Louis, MO", lat: 38.63, lon: -90.24 };
+
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function r1(n) { return (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, ""); }
+  function r2(n) { return (Math.round(n * 100) / 100).toFixed(2).replace(/0$/, "").replace(/\.$/, ""); }
+  function clean(a) { return a.filter(function (v) { return v !== null && v !== undefined && !isNaN(v); }); }
+  function median(a) {
+    var s = a.slice().sort(function (x, y) { return x - y; }), m = Math.floor(s.length / 2);
+    return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+  }
+  function stats(a) { a = clean(a); return a.length ? { lo: Math.min.apply(null, a), hi: Math.max.apply(null, a), mid: median(a), n: a.length } : null; }
+  function getJSON(url, headers) {
+    return fetch(url, { headers: headers || {} }).then(function (r) {
+      if (!r.ok) { throw new Error(r.status + " from " + new URL(url).host); }
+      return r.json();
+    });
+  }
+  var DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  function dayName(ds, i) {   // ds = "YYYY-MM-DD"
+    var p = ds.split("-"), d = new Date(+p[0], +p[1] - 1, +p[2]);
+    return (i === 0 ? "Today" : DOW[d.getDay()]) + ", " + (+p[1]) + "/" + (+p[2]);
+  }
+
+  /* ---------- Open-Meteo ---------- */
+  function loadModels() {
+    var url = "https://api.open-meteo.com/v1/forecast?latitude=" + place.lat + "&longitude=" + place.lon +
+      "&hourly=temperature_2m,precipitation,snowfall,wind_speed_10m&models=" + MODELS.map(function (m) { return m.id; }).join(",") +
+      "&temperature_unit=fahrenheit&precipitation_unit=inch&wind_speed_unit=mph&forecast_days=7&timezone=auto";
+    return getJSON(url).then(function (d) { return parseModels(d); });
+  }
+
+  function parseModels(d) {
+    var out = { times: d.hourly.time, offset: (d.utc_offset_seconds || 0) * 1000, models: [] };
+    MODELS.forEach(function (m) {
+      var t = d.hourly["temperature_2m_" + m.id];
+      if (!t || !clean(t).length) { return; }
+      out.models.push({
+        id: m.id, name: m.name, short: m.short, color: m.color,
+        temp: t, precip: d.hourly["precipitation_" + m.id] || [], snow: d.hourly["snowfall_" + m.id] || [],
+        wind: d.hourly["wind_speed_10m_" + m.id] || []
+      });
+    });
+    return out;
+  }
+
+  function startIndex(mod, nowMs) {
+    for (var i = 0; i < mod.times.length; i++) {
+      if (Date.parse(mod.times[i] + "Z") - mod.offset >= nowMs - 3600 * 1000) { return i; }
+    }
+    return 0;
+  }
+
+  function sum(a) { return clean(a).reduce(function (x, y) { return x + y; }, 0); }
+  function maxOf(a) { a = clean(a); return a.length ? Math.max.apply(null, a) : null; }
+  function minOf(a) { a = clean(a); return a.length ? Math.min.apply(null, a) : null; }
+
+  // One entry per calendar day: per-model high, low, precip, snow, wind.
+  function dailyFromModels(mod) {
+    var dates = [], idx = {};
+    mod.times.forEach(function (t, i) {
+      var ds = t.slice(0, 10);
+      if (!idx[ds]) { idx[ds] = []; dates.push(ds); }
+      idx[ds].push(i);
+    });
+    return dates.map(function (ds) {
+      var per = mod.models.map(function (m) {
+        var ix = idx[ds], pick = function (arr) { return ix.map(function (i) { return arr[i]; }); };
+        var hasData = clean(pick(m.temp)).length >= 12;     // skip partial days a model does not cover
+        if (!hasData) { return null; }
+        return { m: m, high: maxOf(pick(m.temp)), low: minOf(pick(m.temp)), precip: sum(pick(m.precip)), snow: sum(pick(m.snow)), wind: maxOf(pick(m.wind)) };
+      }).filter(Boolean);
+      return { date: ds, per: per };
+    }).filter(function (d) { return d.per.length; });
+  }
+
+  /* ---------- NWS ---------- */
+  function loadNWS() {
+    var h = { Accept: "application/geo+json" };
+    var pt = place.lat.toFixed(4) + "," + place.lon.toFixed(4);
+    return getJSON("https://api.weather.gov/points/" + pt, h).then(function (p) {
+      return Promise.all([
+        getJSON(p.properties.forecast, h),
+        getJSON(p.properties.forecastHourly, h).catch(function () { return null; }),
+        getJSON("https://api.weather.gov/alerts/active?point=" + pt, h).catch(function () { return null; })
+      ]);
+    }).then(function (r) { return parseNWS(r[0], r[1], r[2]); });
+  }
+
+  function parseNWS(fc, hourly, alerts) {
+    var days = {};
+    fc.properties.periods.forEach(function (p) {
+      var ds = p.startTime.slice(0, 10), hr = +p.startTime.slice(11, 13);
+      var rec;
+      if (p.isDaytime) {
+        rec = days[ds] = days[ds] || {};
+        rec.high = p.temperature; rec.short = p.shortForecast; rec.pop = p.probabilityOfPrecipitation ? p.probabilityOfPrecipitation.value : null;
+      } else {
+        // A night period that starts in the evening has its low the next morning.
+        var tgt = ds;
+        if (hr >= 12) { var d = new Date(Date.UTC(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10) + 1)); tgt = d.toISOString().slice(0, 10); }
+        rec = days[tgt] = days[tgt] || {};
+        rec.low = p.temperature;
+        if (!rec.short) { rec.short = p.shortForecast; }
+        if (rec.pop === undefined || rec.pop === null) { rec.pop = p.probabilityOfPrecipitation ? p.probabilityOfPrecipitation.value : null; }
+      }
+    });
+    var now = hourly && hourly.properties.periods[0] ? hourly.properties.periods[0] : null;
+    var al = alerts && alerts.features ? alerts.features.slice(0, 6).map(function (f) {
+      var q = f.properties;
+      return { event: q.event, headline: q.headline, severity: q.severity, description: q.description, instruction: q.instruction,
+        area: q.areaDesc, sender: q.senderName, starts: q.onset || q.effective, ends: q.ends || q.expires };
+    }) : [];
+    return { days: days, now: now, alerts: al };
+  }
+
+  /* ---------- Rendering ---------- */
+  function range(s, fmt, unit) {
+    return s.lo === s.hi ? fmt(s.mid) + unit : fmt(s.lo) + "–" + fmt(s.hi) + unit;
+  }
+
+  function renderNow(mod, nws) {
+    var html = "";
+    var nowNws = nws && nws.now;
+    var start = mod ? startIndex(mod, Date.now()) : 0;
+    var temps = mod ? stats(mod.models.map(function (m) { return m.temp[start]; })) : null;
+    if (nowNws) {
+      html += '<div class="now"><span class="big">' + nowNws.temperature + "°</span><span class="+'"cond"'+">" + esc(nowNws.shortForecast) + "</span></div>";
+      var bits = [];
+      if (nowNws.windSpeed) { bits.push("Wind " + esc(nowNws.windSpeed) + " " + esc(nowNws.windDirection || "")); }
+      if (nowNws.probabilityOfPrecipitation && nowNws.probabilityOfPrecipitation.value !== null) { bits.push(nowNws.probabilityOfPrecipitation.value + "% chance of precipitation this hour"); }
+      html += '<p class="meta">NWS hourly forecast' + (bits.length ? " · " + bits.join(" · ") : "") + "</p>";
+      if (temps) { html += '<p class="meta">Models this hour: ' + range(temps, Math.round, "°") + "</p>"; }
+    } else if (temps) {
+      html += '<div class="now"><span class="big">' + Math.round(temps.mid) + '°</span><span class="cond">Model median</span></div>';
+      html += '<p class="meta">Models this hour: ' + range(temps, Math.round, "°") + ". NWS did not respond.</p>";
+    } else {
+      html = '<span class="sub">No data.</span>';
+    }
+    $("now").innerHTML = html;
+  }
+
+  function renderAlerts(nws) {
+    var when = function (iso) {
+      if (!iso) { return ""; }
+      var d = new Date(iso);
+      return isNaN(d) ? "" : d.toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    };
+    $("alerts").innerHTML = nws && nws.alerts.length ? nws.alerts.map(function (a) {
+      var times = (a.starts ? "<b>Starts:</b> " + when(a.starts) + "<br>" : "") + (a.ends ? "<b>Ends:</b> " + when(a.ends) + "<br>" : "");
+      return '<details class="panel alert"><summary><span class="label">Weather alert · tap for details</span><b>' + esc(a.event) + "</b><p>" + esc(a.headline || "") + "</p></summary>" +
+        '<div class="adetail">' + (times ? "<p>" + times + "</p>" : "") +
+        (a.area ? "<p><b>Area:</b> " + esc(a.area) + "</p>" : "") +
+        (a.description ? '<p class="pre">' + esc(a.description) + "</p>" : "") +
+        (a.instruction ? '<p class="pre"><b>What to do:</b> ' + esc(a.instruction) + "</p>" : "") +
+        (a.sender ? '<p class="sub">Issued by ' + esc(a.sender) + "</p>" : "") + "</div></details>";
+    }).join("") : "";
+    $("alerts").style.display = nws && nws.alerts.length ? "grid" : "none";
+    $("alerts").style.gap = "14px";
+  }
+
+  function metric(k, s, fmt, unit, thresh, extra) {
+    if (!s) { return ""; }
+    var dis = (s.hi - s.lo) >= thresh && s.n > 1;
+    return '<div class="m' + (dis ? " dis" : "") + '"><div class="k">' + k + '</div><div class="v">' + fmt(s.mid) + unit +
+      '</div><div class="r">' + (s.n > 1 ? range(s, fmt, unit) + (dis ? " · disagree" : "") : "one model") + (extra || "") + "</div></div>";
+  }
+
+  function renderDays(mod, nws) {
+    var days = mod ? dailyFromModels(mod) : [];
+    var any = false;
+    var html = days.map(function (d, i) {
+      var per = d.per, hi = stats(per.map(function (p) { return p.high; })), lo = stats(per.map(function (p) { return p.low; }));
+      var pr = stats(per.map(function (p) { return p.precip; })), sn = stats(per.map(function (p) { return p.snow; }));
+      var wd = stats(per.map(function (p) { return p.wind; }));
+      var n = nws && nws.days[d.date];
+      any = true;
+      var line = "";
+      if (n) {
+        line = "<em>NWS</em> " + esc(n.short || "") + (n.high !== undefined ? " · High " + n.high + "°" : "") + (n.low !== undefined ? " · Low " + n.low + "°" : "") +
+          (n.pop !== null && n.pop !== undefined ? " · " + n.pop + "%" : "");
+      }
+      var showSnow = sn && sn.hi >= 0.1;
+      var metrics = metric("High", hi, Math.round, "°", 8) + metric("Low", lo, Math.round, "°", 8) +
+        metric("Rain/melted", pr, r2, " in", 0.4) + (showSnow ? metric("Snow", sn, r1, " in", 3) : metric("Max wind", wd, Math.round, " mph", 12));
+      var rows = "";
+      if (n) {
+        rows += '<tr><td><span class="sw nwsbar"></span>NWS</td><td>' + (n.high !== undefined ? n.high + "°" : "–") + "</td><td>" + (n.low !== undefined ? n.low + "°" : "–") + "</td><td>–</td><td>–</td><td>–</td></tr>";
+      }
+      per.forEach(function (p) {
+        rows += '<tr><td><span class="sw" style="background:' + p.m.color + '"></span>' + p.m.short + "</td><td>" + Math.round(p.high) + "°</td><td>" + Math.round(p.low) +
+          "°</td><td>" + r2(p.precip) + '"</td><td>' + r1(p.snow) + '"</td><td>' + (p.wind === null ? "–" : Math.round(p.wind)) + "</td></tr>";
+      });
+      return '<article class="day"><div class="day-head"><b>' + dayName(d.date, i) + '</b><span class="nwsline">' + line + "</span></div>" +
+        '<div class="metrics">' + metrics + "</div>" +
+        '<details><summary>By model</summary><div class="tbl"><table><thead><tr><th>Source</th><th>High</th><th>Low</th><th>Rain</th><th>Snow</th><th>Wind</th></tr></thead><tbody>' + rows + "</tbody></table></div></details></article>";
+    }).join("");
+    $("days").innerHTML = html || '<div class="panel"><span class="sub">No forecast data.</span></div>';
+    $("legend").hidden = !any;
+    $("legend").innerHTML = MODELS.map(function (m) { return '<span><i class="d" style="background:' + m.color + '"></i>' + m.short + "</span>"; }).join("") +
+      '<span><i class="n"></i>NWS Forecaster</span>';
+  }
+
+  function axisDays(mod, start, n, L, w, T, B, labelY, dayY) {
+    var html = "";
+    var fmtD = function (d) { return d.toLocaleDateString("en-US", { weekday: "short", month: "numeric", day: "numeric" }); };
+    var firstMid = -1;
+    for (var k = 0; k < n; k++) {
+      var d = new Date(mod.times[start + k]), hr = d.getHours();
+      if (hr === 0) {
+        if (firstMid < 0) { firstMid = L + k * w; }
+        html += '<line class="grid" stroke-dasharray="3 3" x1="' + (L + k * w) + '" x2="' + (L + k * w) + '" y1="' + T + '" y2="' + (dayY + 3) + '"/>';
+        html += '<text class="day" x="' + (L + k * w + 3) + '" y="' + dayY + '">' + fmtD(d) + "</text>";
+      } else if (hr % 6 === 0) {
+        html += '<text x="' + (L + k * w + w / 2) + '" y="' + labelY + '" text-anchor="middle">' + ((hr % 12 || 12) + (hr < 12 ? "a" : "p")) + "</text>";
+      }
+    }
+    if (firstMid < 0 || firstMid - L > 70) {
+      html += '<text class="day" x="' + (L + 1) + '" y="' + dayY + '">' + fmtD(new Date(mod.times[start])) + "</text>";
+    }
+    return html;
+  }
+
+  function drawCharts(mod) {
+    var tsvg = $("tchart"), psvg = $("pchart");
+    if (!mod || !mod.models.length) { tsvg.innerHTML = ""; psvg.innerHTML = ""; return; }
+    var start = startIndex(mod, Date.now()), n = Math.min(48, mod.times.length - start);
+    var lo = [], hi = [], md = [], pm = [], i, k;
+    for (k = 0; k < n; k++) {
+      var tv = clean(mod.models.map(function (m) { return m.temp[start + k]; }));
+      lo.push(Math.min.apply(null, tv)); hi.push(Math.max.apply(null, tv)); md.push(median(tv));
+      var pv = clean(mod.models.map(function (m) { return m.precip[start + k]; }));
+      pm.push(pv.length ? median(pv) : 0);
+    }
+    var L = 30, R = 354, w = (R - L) / n;
+    // temperature
+    var T = 8, B = 106, ymin = Math.floor(Math.min.apply(null, lo) / 5) * 5 - 0, ymax = Math.ceil(Math.max.apply(null, hi) / 5) * 5;
+    if (ymax - ymin < 10) { ymax = ymin + 10; }
+    var X = function (j) { return L + j * w + w / 2; }, Y = function (v) { return B - (v - ymin) / (ymax - ymin) * (B - T); };
+    var h = "";
+    for (var g = ymin; g <= ymax; g += (ymax - ymin > 30 ? 10 : 5)) {
+      h += '<line class="grid" x1="' + L + '" x2="' + R + '" y1="' + Y(g) + '" y2="' + Y(g) + '"/><text x="' + (L - 4) + '" y="' + (Y(g) + 3) + '" text-anchor="end">' + g + "°</text>";
+    }
+    var up = "", dn = "", ln = "";
+    for (k = 0; k < n; k++) { up += (k ? "L" : "M") + X(k).toFixed(1) + "," + Y(hi[k]).toFixed(1); ln += (k ? "L" : "M") + X(k).toFixed(1) + "," + Y(md[k]).toFixed(1); }
+    for (k = n - 1; k >= 0; k--) { dn += "L" + X(k).toFixed(1) + "," + Y(lo[k]).toFixed(1); }
+    h += '<path class="band" d="' + up + dn + 'Z"/><path class="line" d="' + ln + '"/>';
+    h += axisDays(mod, start, n, L, w, T, B, 119, 136);
+    tsvg.innerHTML = h;
+    // precipitation
+    var T2 = 6, B2 = 66, top = Math.max(0.05, Math.ceil(Math.max.apply(null, pm) * 20) / 20), p = "";
+    p += '<line class="grid" x1="' + L + '" x2="' + R + '" y1="' + B2 + '" y2="' + B2 + '"/><line class="grid" x1="' + L + '" x2="' + R + '" y1="' + T2 + '" y2="' + T2 + '"/>';
+    p += '<text x="' + (L - 4) + '" y="' + (T2 + 3) + '" text-anchor="end">' + r2(top) + '</text><text x="' + (L - 4) + '" y="' + (B2 + 3) + '" text-anchor="end">0</text>';
+    pm.forEach(function (v, j) {
+      var bh = v / top * (B2 - T2);
+      p += '<rect class="bar" x="' + (L + j * w + 0.5) + '" y="' + (B2 - bh) + '" width="' + Math.max(1, w - 1) + '" height="' + bh + '" rx="1"/>';
+    });
+    p += axisDays(mod, start, n, L, w, T2, B2, 79, 90);
+    psvg.innerHTML = p;
+  }
+
+  function showError(msg) { var e = $("err"); e.textContent = msg; e.hidden = !msg; }
+
+  function load() {
+    $("where").textContent = place.name;
+    $("now").innerHTML = '<span class="sub">Loading…</span>'; showError("");
+    var errs = [];
+    Promise.all([
+      loadModels().catch(function (e) { errs.push("Models: " + e.message); return null; }),
+      loadNWS().catch(function (e) { errs.push("NWS: " + e.message); return null; })
+    ]).then(function (r) {
+      renderAlerts(r[1]); renderNow(r[0], r[1]); drawCharts(r[0]); renderDays(r[0], r[1]);
+      showError(errs.join(" · "));
+      try { localStorage.setItem("mw_place", JSON.stringify(place)); } catch (e) {}
+    });
+  }
+
+  $("refresh").addEventListener("click", load);
+  $("zipForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var z = $("zip").value.trim();
+    if (!/^\d{5}$/.test(z)) { showError("Enter a 5-digit US ZIP code."); return; }
+    showError("");
+    getJSON("https://api.zippopotam.us/us/" + z).then(function (d) {
+      var pl = d.places && d.places[0];
+      if (!pl) { throw new Error("none"); }
+      place = { name: pl["place name"] + ", " + pl["state abbreviation"] + " " + z, lat: +(+pl.latitude).toFixed(3), lon: +(+pl.longitude).toFixed(3) };
+      $("zip").blur();
+      load();
+    }).catch(function () { showError("Could not find ZIP code " + z + ". Check it and try again."); });
+  });
+  $("loc").addEventListener("click", function () {
+    if (!navigator.geolocation) { showError("This browser has no location access."); return; }
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      place = { name: "Your location", lat: +pos.coords.latitude.toFixed(3), lon: +pos.coords.longitude.toFixed(3) };
+      load();
+    }, function () { showError("Location was blocked. Allow it in Safari settings, or enter a ZIP code."); });
+  });
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) { load(); } });
+
+  try { var s = JSON.parse(localStorage.getItem("mw_place") || "null"); if (s && s.lat) { place = s; } } catch (e) {}
+  load();
+})();
+</script>
+</body>
+</html>
