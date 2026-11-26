@@ -117,6 +117,8 @@
   .col .ch { font-size: 1.2rem; font-weight: 700; margin-top: 6px; line-height: 1.1; }
   .col .cl { font-size: .95rem; color: var(--muted); line-height: 1.1; }
   .col .cp { font-size: .68rem; color: var(--fg); margin-top: 6px; text-align: center; line-height: 1.2; min-height: 2.4em; }
+  .col .cico { margin-top: 4px; }
+  .col .cico svg { width: 36px; height: 36px; display: block; }
   .col .dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
   details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
   summary { cursor: pointer; font-size: .85rem; color: var(--muted); min-height: 28px; }
@@ -433,10 +435,12 @@
       var lo = n.low !== undefined ? n.low : (w.lo ? Math.round(w.lo.mid) : "–");
       var pt = w.sn && w.sn.mid >= 0.1 ? r1(w.sn.mid) + '" snow' : (w.pr && w.pr.mid >= 0.01 ? r2(w.pr.mid) + '" rain' : "Dry");
       var dis = (w.hi && w.hi.hi - w.hi.lo >= 8) || (w.pr && w.pr.hi - w.pr.lo >= 0.4) || (w.sn && w.sn.hi - w.sn.lo >= 3);
+      var txt = n.short || (n.tonight && n.tonight.short) || "";
+      var kind = txt ? kindFromText(txt) : (w.sn && w.sn.mid >= 0.1 ? "snow" : (w.pr && w.pr.mid >= 0.01 ? "rain" : "clear"));
       var nm = dayName(w.date, i).split(", ");
       return '<button type="button" class="col' + (i === selected ? " sel" : "") + '" data-i="' + i + '" aria-pressed="' + (i === selected) + '">' +
         (dis ? '<span class="dot" title="Models disagree"></span>' : "") +
-        '<span class="cd">' + nm[0] + '</span><span class="cdt">' + nm[1] + '</span><span class="ch">' + hi + '°</span><span class="cl">' + lo + '°</span><span class="cp">' + pt + "</span></button>";
+        '<span class="cd">' + nm[0] + '</span><span class="cdt">' + nm[1] + '</span><span class="ch">' + hi + '°</span><span class="cl">' + lo + '°</span><span class="cp">' + pt + '</span><span class="cico">' + wxIcon(kind, true, txt || pt) + "</span></button>";
     }).join("") || '<span class="sub">No forecast data.</span>';
     $("legend").hidden = !weekData.length;
     $("legend").innerHTML = '<span><i class="n"></i>Highs and lows lead with the NWS</span><span><i class="dot-key"></i>Models disagree</span>';
