@@ -73,12 +73,15 @@
   .alert { background: var(--warnbg); border-color: var(--warn); }
   .alert b { color: var(--warn); }
   .alert p { margin: 4px 0 0; font-size: .88rem; }
-  details.alert { margin-top: 0; padding: 16px; border-top: 1px solid var(--warn); }
-  details.alert summary { list-style: none; color: var(--fg); }
-  details.alert summary::-webkit-details-marker { display: none; }
-  details.alert summary .label { display: block; color: var(--warn); }
-  details.alert summary::after { content: "Show details ▾"; display: block; margin-top: 6px; font-size: .8rem; color: var(--warn); }
-  details.alert[open] summary::after { content: "Hide details ▴"; }
+  details.alert { margin-top: 0; padding: 12px 16px; border-top: 1px solid var(--warn); }
+  details.alert > summary { list-style: none; color: var(--fg); display: flex; justify-content: space-between; align-items: center; gap: 4px 12px; flex-wrap: wrap; min-height: 28px; cursor: pointer; }
+  details.alert > summary::-webkit-details-marker { display: none; }
+  details.alert .atitle { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  details.alert .atitle svg { width: 20px; height: 20px; flex: 0 0 auto; }
+  details.alert .atitle b { color: var(--warn); }
+  details.alert .tap { font-size: .78rem; color: var(--warn); }
+  details.alert .tap::before { content: "Tap for details ▾"; }
+  details.alert[open] .tap::before { content: "Hide ▴"; }
   .adetail { margin-top: 10px; border-top: 1px solid var(--warn); padding-top: 8px; }
   .adetail .pre { white-space: pre-line; }
   .now { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -397,8 +400,8 @@
     };
     $("alerts").innerHTML = nws && nws.alerts.length ? nws.alerts.map(function (a) {
       var times = (a.starts ? "<b>Starts:</b> " + when(a.starts) + "<br>" : "") + (a.ends ? "<b>Ends:</b> " + when(a.ends) + "<br>" : "");
-      return '<details class="panel alert"><summary><span class="label">Weather alert · tap for details</span><b>' + esc(a.event) + "</b><p>" + esc(a.headline || "") + "</p></summary>" +
-        '<div class="adetail">' + (times ? "<p>" + times + "</p>" : "") +
+      return '<details class="panel alert"><summary><span class="atitle"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20z" fill="var(--warn)"/><rect x="11" y="9" width="2" height="6" rx="1" fill="var(--warnbg)"/><circle cx="12" cy="17.8" r="1.2" fill="var(--warnbg)"/></svg><b>' + esc(a.event) + '</b></span><span class="tap"></span></summary>' +
+        '<div class="adetail">' + (a.headline ? "<p><b>" + esc(a.headline) + "</b></p>" : "") + (times ? "<p>" + times + "</p>" : "") +
         (a.area ? "<p><b>Area:</b> " + esc(a.area) + "</p>" : "") +
         (a.description ? '<p class="pre">' + esc(a.description) + "</p>" : "") +
         (a.instruction ? '<p class="pre"><b>What to do:</b> ' + esc(a.instruction) + "</p>" : "") +
