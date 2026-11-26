@@ -156,6 +156,9 @@
   .mlegend .chip { display: inline-flex; align-items: center; gap: 5px; }
   .mlegend .chip i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
   .mlegend .grad { width: 140px; height: 10px; border-radius: 5px; }
+  .rmode { display: flex; gap: 6px; margin-top: 10px; }
+  .rmode button { flex: 1 1 0; min-height: 40px; font-size: .82rem; font-weight: 600; }
+  .rmode button.on { border-color: var(--accent); background: var(--band); box-shadow: 0 0 0 1px var(--accent); }
   .rcontrols { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
   .rcontrols input[type=range] { flex: 1 1 0; min-width: 0; accent-color: var(--accent); }
   .rcontrols #rplay { min-width: 76px; }
@@ -202,6 +205,10 @@
         <button type="button" data-mode="temp" aria-pressed="false">Temp</button>
         <button type="button" data-mode="air" aria-pressed="false">Air</button>
       </div>
+    </div>
+    <div class="rmode" id="rmode" role="group" aria-label="Radar time range">
+      <button type="button" data-src="past" class="on" aria-pressed="true">Past 80 min</button>
+      <button type="button" data-src="forecast" aria-pressed="false">Next 3 hours</button>
     </div>
     <div class="rcontrols" id="rcontrols">
       <button id="rplay" type="button">Pause</button>
@@ -584,6 +591,9 @@
 
   /* ---------- Radar (Leaflet + RainViewer past frames, NOAA fallback) ---------- */
   var map = null, marker = null, radar = { layers: [], idx: 0, timer: null, noaa: null, n: 0, frames: [] };
+  // Forecast radar (Rainbow). Paste your Worker address here, for example "https://rainbow-proxy.yourname.workers.dev". Leave empty to keep forecast radar off.
+  var RAINBOW_PROXY = "https://rainbow-proxy.amberworks.workers.dev";
+  var radarSrc = "past";
   var mode = "radar", radarNote = "", gridSeq = 0, gridGroup = null, gridTimer = null;
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -606,8 +616,9 @@
     radar.idx = i;
     radar.layers.forEach(function (l, k) { l.setOpacity(mode === "radar" && k === i ? 0.75 : 0); });
     $("rslider").value = i;
-    var f = radar.frames[i], mins = Math.round((Date.now() / 1000 - f.time) / 60);
-    $("rtime").textContent = new Date(f.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + (i === radar.n - 1 ? " · latest" : " · " + mins + " min ago");
+    var f = radar.frames[i], mins = Math.round((Date.now() / 1000 - f.time) / 60), clock = new Date(f.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (f.off !== undefined) { $("rtime").textContent = clock + (f.off === 0 ? " · now" : " · +" + (f.off / 60) + " min"); }
+    else { $("rtime").textContent = clock + (i === radar.n - 1 ? " · latest" : " · " + mins + " min ago"); }
   }
   function tick() {
     showFrame((radar.idx + 1) % radar.n);
@@ -627,7 +638,43 @@
     if (!map) { $("rnote").textContent = "The map library did not load, so radar is unavailable."; return Promise.resolve(); }
     map.setView([place.lat, place.lon], map.getZoom());
     marker.setLatLng([place.lat, place.lon]);
+    return buildRadar();
+  }
+
+  function buildRadar() {
     clearRadar();
+    return radarSrc === "forecast" ? loadForecast() : loadPast();
+  }
+
+  function loadForecast() {
+    var offsets = [0, 1800, 3600, 5400, 7200, 9000, 10800];   // now, then every 30 minutes for 3 hours
+    return getJSON(RAINBOW_PROXY.replace(/\/$/, "") + "/snapshot").then(function (d) {
+      var snap = +(d.snapshot !== undefined ? d.snapshot : d.timestamp);
+      if (!snap) { throw new Error("no snapshot"); }
+      radar.frames = offsets.map(function (o) { return { time: snap + o, off: o }; }); radar.n = offsets.length;
+      var errCount = 0;
+      radar.layers = offsets.map(function (o) {
+        var lyr = L.tileLayer(RAINBOW_PROXY.replace(/\/$/, "") + "/tile/" + snap + "/" + o + "/{z}/{x}/{y}", { pane: "radar", maxNativeZoom: 12, maxZoom: 12, opacity: 0 }).addTo(map);
+        lyr.on("tileerror", function () { errCount++; if (errCount === 12 && mode === "radar") { $("rnote").textContent = "Forecast tiles are not loading. Check the Worker address and API key, or switch back to Past."; } });
+        return lyr;
+      });
+      $("rslider").max = radar.n - 1; $("rslider").disabled = false; $("rplay").disabled = false;
+      radarNote = "Forecast radar from Rainbow: now plus the next 3 hours in 30-minute steps. It is a computer forecast of where precipitation will move, so treat the timing as approximate. The red dot is your location.";
+      showFrame(0);
+      if (mode === "radar") { setNote(); if (!reduceMotion) { playRadar(); } else { $("rplay").textContent = "Play"; } }
+    }).catch(function () {
+      radarSrc = "past"; syncSrcButtons();
+      return loadPast().then(function () { if (mode === "radar") { $("rnote").textContent = "Forecast radar did not load, so this shows the past 80 minutes. " + radarNote; } });
+    });
+  }
+
+  function syncSrcButtons() {
+    Array.prototype.forEach.call(document.querySelectorAll("#rmode button"), function (b) {
+      var on = b.getAttribute("data-src") === radarSrc; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+  }
+
+  function loadPast() {
     return getJSON("https://api.rainviewer.com/public/weather-maps.json").then(function (d) {
       var frames = (d.radar && d.radar.past ? d.radar.past : []).slice(-9);
       if (!frames.length) { throw new Error("no frames"); }
@@ -734,7 +781,7 @@
     Array.prototype.forEach.call(document.querySelectorAll("#layers button"), function (b) {
       var on = b.getAttribute("data-mode") === m; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on ? "true" : "false");
     });
-    $("rlabel").textContent = LABELS[m]; $("rcontrols").hidden = m !== "radar"; legendFor(m); setNote();
+    $("rlabel").textContent = LABELS[m]; $("rcontrols").hidden = m !== "radar"; $("rmode").hidden = m !== "radar"; legendFor(m); setNote();
     if (!map) { return; }
     if (gridGroup) { gridGroup.clearLayers(); }
     if (m === "radar") {
@@ -773,6 +820,17 @@
       var on = c === b; c.classList.toggle("sel", on); c.setAttribute("aria-pressed", on ? "true" : "false");
     });
     showDetail();
+  });
+  $("rmode").addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest("button") : null;
+    if (!b || !map) { return; }
+    var src = b.getAttribute("data-src");
+    if (src === radarSrc) { return; }
+    if (src === "forecast" && !RAINBOW_PROXY) {
+      $("rnote").textContent = "Forecast radar is not set up yet. It needs a free Rainbow key and a small Cloudflare Worker, then the Worker's address goes into RAINBOW_PROXY near the top of this page's script.";
+      return;
+    }
+    radarSrc = src; syncSrcButtons(); buildRadar();
   });
   $("layers").addEventListener("click", function (ev) {
     var b = ev.target.closest ? ev.target.closest("button") : null;
