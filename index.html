@@ -339,6 +339,14 @@
     }
     return h;
   }
+  function flake(cx, cy, r) {   // six-armed snowflake
+    var h = '<g stroke="var(--ice)" stroke-width="1.9" stroke-linecap="round">';
+    for (var a = 0; a < 3; a++) {
+      var t = a * Math.PI / 3, dx = Math.cos(t) * r, dy = Math.sin(t) * r;
+      h += '<line x1="' + (cx - dx).toFixed(1) + '" y1="' + (cy - dy).toFixed(1) + '" x2="' + (cx + dx).toFixed(1) + '" y2="' + (cy + dy).toFixed(1) + '"/>';
+    }
+    return h + "</g>";
+  }
   var MOON = '<path d="M38 12a20 20 0 1 0 14 34A16 16 0 0 1 38 12z" fill="var(--moon)"/>';
   function wxIcon(kind, isDay, label) {
     var up = '<g transform="translate(0 -7)">' + CLOUD + "</g>", b = "";
@@ -348,8 +356,8 @@
       case "cloud": b = '<g transform="translate(0 4)">' + CLOUD + "</g>"; break;
       case "fog": b = up + '<g stroke="var(--cloud)" stroke-width="3" stroke-linecap="round"><line x1="16" y1="45" x2="48" y2="45"/><line x1="20" y1="52" x2="44" y2="52"/></g>'; break;
       case "rain": b = up + '<g stroke="var(--rain)" stroke-width="3.5" stroke-linecap="round"><line x1="24" y1="47" x2="21" y2="56"/><line x1="33" y1="47" x2="30" y2="56"/><line x1="42" y1="47" x2="39" y2="56"/></g>'; break;
-      case "snow": b = up + '<g fill="var(--ice)"><circle cx="23" cy="50" r="3"/><circle cx="32" cy="56" r="3"/><circle cx="41" cy="50" r="3"/></g>'; break;
-      case "mix": b = up + '<g stroke="var(--rain)" stroke-width="3.5" stroke-linecap="round"><line x1="24" y1="47" x2="21" y2="56"/><line x1="42" y1="47" x2="39" y2="56"/></g><circle cx="32" cy="53" r="3" fill="var(--ice)"/>'; break;
+      case "snow": b = up + flake(22, 51, 4.6) + flake(32, 58, 4.6) + flake(42, 51, 4.6); break;
+      case "mix": b = up + '<g stroke="var(--rain)" stroke-width="3.5" stroke-linecap="round"><line x1="24" y1="47" x2="21" y2="56"/><line x1="42" y1="47" x2="39" y2="56"/></g>' + flake(32, 54, 4.6); break;
       case "thunder": b = up + '<polygon points="35,40 25,54 32,54 29,64 42,48 35,48" fill="var(--sun)"/>'; break;
     }
     return '<svg viewBox="0 0 64 64" role="img" aria-label="' + esc(label) + '">' + b + "</svg>";
