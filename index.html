@@ -10,6 +10,7 @@
 <meta name="theme-color" content="#eef2f6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#10161d" media="(prefers-color-scheme: dark)">
 <title>Multi-Model Weather</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
   /* Layout: one phone-width column. Alerts, Now, 48-hour charts, then one card per day with model ranges and the NWS number as anchor. */
   :root {
@@ -44,6 +45,7 @@
     --sun: #f2c94c; --cloud: #7f93a8; --ice: #9fd0ff; --rain: #6aa8f0; --moon: #dbe3ee;
     color-scheme: dark;
   }
+  [hidden] { display: none !important; }
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body {
@@ -138,6 +140,29 @@
   .legend .b { width: 14px; height: 8px; border-radius: 4px; background: var(--band); }
   .legend .n { width: 3px; height: 12px; background: var(--nws); border-radius: 2px; }
   .legend .dot-key { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+  #map { height: 300px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); isolation: isolate; }
+  .mapwrap { position: relative; }
+  .layers { position: absolute; right: 8px; top: 8px; z-index: 1000; display: flex; flex-direction: column; gap: 4px; }
+  .layers button {
+    min-width: 58px; min-height: 40px; padding: 6px 10px; font-size: .78rem; font-weight: 600;
+    background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; opacity: .96;
+  }
+  .layers button.on { border-color: var(--accent); background: var(--band); box-shadow: 0 0 0 1px var(--accent); }
+  .wk { position: relative; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; }
+  .wk svg { position: absolute; inset: 0; width: 44px; height: 44px; }
+  .wk span { position: relative; font: 700 11px/1 var(--font); color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; }
+  .pill { display: flex; align-items: center; justify-content: center; width: 38px; height: 26px; border-radius: 13px; border: 2px solid #fff; font: 700 12px/1 var(--font); box-shadow: 0 1px 4px rgba(0,0,0,.45); font-variant-numeric: tabular-nums; }
+  .mlegend { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: center; margin-top: 10px; font-size: .75rem; color: var(--muted); }
+  .mlegend .chip { display: inline-flex; align-items: center; gap: 5px; }
+  .mlegend .chip i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .mlegend .grad { width: 140px; height: 10px; border-radius: 5px; }
+  .rcontrols { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .rcontrols input[type=range] { flex: 1 1 0; min-width: 0; accent-color: var(--accent); }
+  .rcontrols #rplay { min-width: 76px; }
+  #rtime { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) #map .base-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); } }
+  :root[data-theme="dark"] #map .base-pane { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9); }
+  .leaflet-container { font: 11px/1.4 var(--font); }
   .err { color: var(--warn); font-size: .88rem; margin: 0; }
   .foot { color: var(--muted); font-size: .75rem; }
   .foot a { color: var(--accent); }
@@ -168,6 +193,26 @@
   </section>
 
   <section class="panel">
+    <p class="label" id="rlabel">Radar</p>
+    <div class="mapwrap">
+      <div id="map" role="application" aria-label="Weather map"></div>
+      <div class="layers" id="layers" role="group" aria-label="Map layer">
+        <button type="button" data-mode="radar" class="on" aria-pressed="true">Radar</button>
+        <button type="button" data-mode="wind" aria-pressed="false">Wind</button>
+        <button type="button" data-mode="temp" aria-pressed="false">Temp</button>
+        <button type="button" data-mode="air" aria-pressed="false">Air</button>
+      </div>
+    </div>
+    <div class="rcontrols" id="rcontrols">
+      <button id="rplay" type="button">Pause</button>
+      <input id="rslider" type="range" min="0" max="0" value="0" aria-label="Radar time">
+      <span id="rtime" class="sub"></span>
+    </div>
+    <div class="mlegend" id="mlegend" hidden></div>
+    <p class="sub-label" id="rnote"></p>
+  </section>
+
+  <section class="panel">
     <p class="label">Next 48 hours</p>
     <p class="sub-label" style="margin-top:0">Temperature, °F. Shaded band is the range across models, line is the median.</p>
     <svg class="chart" id="tchart" viewBox="0 0 360 146" role="img" aria-label="Hourly temperature, range across models"></svg>
@@ -185,6 +230,7 @@
   <p class="foot">Models: GFS, ECMWF, Canadian GEM and German ICON via <a href="https://open-meteo.com/">Open-Meteo</a>. Big numbers are the median of the models, with the range underneath. NWS numbers are forecaster-adjusted, so treat them as the anchor. Raw model snow runs high when the ground is warm.</p>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function () {
   "use strict";
@@ -536,6 +582,172 @@
     psvg.innerHTML = p;
   }
 
+  /* ---------- Radar (Leaflet + RainViewer past frames, NOAA fallback) ---------- */
+  var map = null, marker = null, radar = { layers: [], idx: 0, timer: null, noaa: null, n: 0, frames: [] };
+  var mode = "radar", radarNote = "", gridSeq = 0, gridGroup = null, gridTimer = null;
+  var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function initMap() {
+    if (map || !window.L) { return; }
+    map = L.map("map", { minZoom: 4, maxZoom: 8, scrollWheelZoom: false, dragging: !L.Browser.mobile }).setView([place.lat, place.lon], 7);
+    map.createPane("base"); map.getPane("base").style.zIndex = 200; map.getPane("base").classList.add("base-pane");
+    map.createPane("radar"); map.getPane("radar").style.zIndex = 250; map.getPane("radar").style.pointerEvents = "none";
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { pane: "base", maxZoom: 8, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+    marker = L.circleMarker([place.lat, place.lon], { radius: 6, color: "#ffffff", weight: 2, fillColor: "#e8503a", fillOpacity: 1 }).addTo(map);
+    gridGroup = L.layerGroup().addTo(map);
+    map.on("moveend", function () {
+      if (mode === "radar") { return; }
+      clearTimeout(gridTimer); gridTimer = setTimeout(loadGrid, 700);
+    });
+  }
+
+  function stopRadar() { if (radar.timer) { clearTimeout(radar.timer); radar.timer = null; } $("rplay").textContent = "Play"; }
+  function showFrame(i) {
+    radar.idx = i;
+    radar.layers.forEach(function (l, k) { l.setOpacity(mode === "radar" && k === i ? 0.75 : 0); });
+    $("rslider").value = i;
+    var f = radar.frames[i], mins = Math.round((Date.now() / 1000 - f.time) / 60);
+    $("rtime").textContent = new Date(f.time * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) + (i === radar.n - 1 ? " · latest" : " · " + mins + " min ago");
+  }
+  function tick() {
+    showFrame((radar.idx + 1) % radar.n);
+    radar.timer = setTimeout(tick, radar.idx === radar.n - 1 ? 1800 : 600);
+  }
+  function playRadar() { stopRadar(); $("rplay").textContent = "Pause"; radar.timer = setTimeout(tick, 600); }
+
+  function clearRadar() {
+    stopRadar();
+    radar.layers.forEach(function (l) { map.removeLayer(l); });
+    radar.layers = []; radar.frames = []; radar.n = 0;
+    if (radar.noaa) { map.removeLayer(radar.noaa); radar.noaa = null; }
+  }
+
+  function loadRadar() {
+    initMap();
+    if (!map) { $("rnote").textContent = "The map library did not load, so radar is unavailable."; return Promise.resolve(); }
+    map.setView([place.lat, place.lon], map.getZoom());
+    marker.setLatLng([place.lat, place.lon]);
+    clearRadar();
+    return getJSON("https://api.rainviewer.com/public/weather-maps.json").then(function (d) {
+      var frames = (d.radar && d.radar.past ? d.radar.past : []).slice(-9);
+      if (!frames.length) { throw new Error("no frames"); }
+      radar.frames = frames; radar.n = frames.length;
+      radar.layers = frames.map(function (f) {
+        return L.tileLayer(d.host + f.path + "/512/{z}/{x}/{y}/2/1_1.png", { pane: "radar", tileSize: 512, zoomOffset: -1, maxZoom: 8, opacity: 0 }).addTo(map);
+      });
+      $("rslider").max = radar.n - 1; $("rslider").disabled = false; $("rplay").disabled = false;
+      radarNote = "Radar from RainViewer, which combines National Weather Service and other national radar: the last 80 minutes, snow shaded in its own color. The red dot is your location. On a phone, drag with two fingers to move the map.";
+      showFrame(radar.n - 1);
+      if (mode === "radar") { setNote(); if (!reduceMotion) { playRadar(); } else { $("rplay").textContent = "Play"; } }
+    }).catch(function () {
+      // Fallback: latest NOAA national radar mosaic (US only, no loop).
+      radar.noaa = L.tileLayer.wms("https://opengeo.ncep.noaa.gov/geoserver/conus/conus_bref_qcd/ows", { layers: "conus_bref_qcd", format: "image/png", transparent: true, opacity: mode === "radar" ? 0.7 : 0, pane: "radar" }).addTo(map);
+      $("rslider").disabled = true; $("rplay").disabled = true; $("rtime").textContent = "Latest";
+      radarNote = "RainViewer did not respond, so this is the latest NOAA radar (US only, no loop).";
+      if (mode === "radar") { setNote(); }
+    });
+  }
+
+  /* ---------- Other map layers: wind, temperature, air quality (Open-Meteo grid points) ---------- */
+  function setNote() { $("rnote").textContent = mode === "radar" ? radarNote : "Current values from Open-Meteo at points across the map. Move or zoom the map to update. The red dot is your location."; }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function hex2rgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+  function rampColor(stops, v) {
+    if (v <= stops[0][0]) { return stops[0][1]; }
+    for (var i = 1; i < stops.length; i++) {
+      if (v <= stops[i][0]) {
+        var t = (v - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]), a = hex2rgb(stops[i - 1][1]), b = hex2rgb(stops[i][1]);
+        return "rgb(" + Math.round(lerp(a[0], b[0], t)) + "," + Math.round(lerp(a[1], b[1], t)) + "," + Math.round(lerp(a[2], b[2], t)) + ")";
+      }
+    }
+    return stops[stops.length - 1][1];
+  }
+  function inkFor(c) {   // readable text color on a colored pill
+    var m = /(\d+),\s*(\d+),\s*(\d+)/.exec(c), rgb = m ? [+m[1], +m[2], +m[3]] : hex2rgb(c);
+    return (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) > 150 ? "#14202b" : "#ffffff";
+  }
+  var TEMP_STOPS = [[-10, "#6a3fc8"], [10, "#3b6fe0"], [25, "#5fb3f0"], [32, "#7fdcd8"], [45, "#7ccf7a"], [60, "#f2dc5d"], [75, "#f2a63c"], [90, "#e2553a"], [105, "#9e1b2a"]];
+  var WIND_BANDS = [[5, "#9fb3c8", "under 5"], [15, "#4ea1e6", "5–15"], [25, "#43c59e", "15–25"], [35, "#f0c948", "25–35"], [45, "#f08a3a", "35–45"], [999, "#e0463a", "45+"]];
+  var AQI_BANDS = [[50, "#3fc26b", "Good"], [100, "#f2d33c", "Moderate"], [150, "#f0903a", "Sensitive groups"], [200, "#e0463a", "Unhealthy"], [300, "#8f3f97", "Very unhealthy"], [9999, "#7e0023", "Hazardous"]];
+  function bandColor(bands, v) { for (var i = 0; i < bands.length; i++) { if (v <= bands[i][0]) { return bands[i][1]; } } return bands[bands.length - 1][1]; }
+
+  function gridPoints() {
+    // Lay points out inside the area clear of the zoom buttons (left) and layer buttons (right).
+    var sz = map.getSize(), x0 = 50, x1 = sz.x - 76, y0 = 12, y1 = sz.y - 26;
+    var cols = Math.max(2, Math.min(5, Math.floor((x1 - x0) / 64))), rows = Math.max(2, Math.min(5, Math.floor((y1 - y0) / 58))), pts = [];
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var ll = map.containerPointToLatLng(L.point(x0 + (c + 0.5) / cols * (x1 - x0), y0 + (r + 0.5) / rows * (y1 - y0)));
+        pts.push({ lat: +ll.lat.toFixed(2), lon: +ll.lng.toFixed(2) });
+      }
+    }
+    return pts;
+  }
+
+  function legendFor(m) {
+    var h = "";
+    if (m === "temp") {
+      var g = TEMP_STOPS.map(function (s) { return s[1] + " " + Math.round((s[0] + 10) / 115 * 100) + "%"; }).join(",");
+      h = '<span>Temperature, °F</span><span class="grad" style="background:linear-gradient(90deg,' + g + ')"></span><span>-10° to 105°</span>';
+    } else if (m === "wind") {
+      h = "<span>Wind, mph (arrow points where it blows)</span>" + WIND_BANDS.map(function (b) { return '<span class="chip"><i style="background:' + b[1] + '"></i>' + b[2] + "</span>"; }).join("");
+    } else if (m === "air") {
+      h = "<span>US air quality index</span>" + AQI_BANDS.map(function (b) { return '<span class="chip"><i style="background:' + b[1] + '"></i>' + b[2] + "</span>"; }).join("");
+    }
+    $("mlegend").innerHTML = h; $("mlegend").hidden = !h;
+  }
+
+  function loadGrid() {
+    if (!map || mode === "radar") { return; }
+    var my = ++gridSeq, pts = gridPoints(), m = mode;
+    var q = "latitude=" + pts.map(function (p) { return p.lat; }).join(",") + "&longitude=" + pts.map(function (p) { return p.lon; }).join(",");
+    var url = m === "air"
+      ? "https://air-quality-api.open-meteo.com/v1/air-quality?" + q + "&current=us_aqi"
+      : "https://api.open-meteo.com/v1/forecast?" + q + "&current=temperature_2m,wind_speed_10m,wind_direction_10m&temperature_unit=fahrenheit&wind_speed_unit=mph";
+    getJSON(url).then(function (d) {
+      if (my !== gridSeq || mode !== m) { return; }
+      var arr = Array.isArray(d) ? d : [d];
+      gridGroup.clearLayers();
+      arr.forEach(function (o, i) {
+        if (!o || !o.current) { return; }
+        var ll = [o.latitude !== undefined ? o.latitude : pts[i].lat, o.longitude !== undefined ? o.longitude : pts[i].lon], c = o.current, html, size;
+        if (m === "temp" && c.temperature_2m !== null && c.temperature_2m !== undefined) {
+          var col = rampColor(TEMP_STOPS, c.temperature_2m);
+          html = '<div class="pill" style="background:' + col + ";color:" + inkFor(col) + '">' + Math.round(c.temperature_2m) + "°</div>"; size = [42, 30];
+        } else if (m === "wind" && c.wind_speed_10m !== null && c.wind_speed_10m !== undefined) {
+          var wc = bandColor(WIND_BANDS, c.wind_speed_10m), rot = ((c.wind_direction_10m || 0) + 180) % 360;
+          html = '<div class="wk"><svg viewBox="0 0 44 44" style="transform:rotate(' + rot + 'deg)"><polygon points="22,3 32,34 22,28 12,34" fill="' + wc + '" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></svg><span>' + Math.round(c.wind_speed_10m) + "</span></div>"; size = [44, 44];
+        } else if (m === "air" && c.us_aqi !== null && c.us_aqi !== undefined) {
+          var ac = bandColor(AQI_BANDS, c.us_aqi);
+          html = '<div class="pill" style="background:' + ac + ";color:" + inkFor(ac) + '">' + Math.round(c.us_aqi) + "</div>"; size = [42, 30];
+        } else { return; }
+        L.marker(ll, { icon: L.divIcon({ className: "", html: html, iconSize: size, iconAnchor: [size[0] / 2, size[1] / 2] }), interactive: false, keyboard: false }).addTo(gridGroup);
+      });
+      if (!gridGroup.getLayers().length) { $("rnote").textContent = "No " + ({ wind: "wind", temp: "temperature", air: "air quality" }[m]) + " data for this area."; }
+    }).catch(function () { if (my === gridSeq && mode === m) { $("rnote").textContent = "Could not load this layer. Check your connection and tap the layer again."; } });
+  }
+
+  if (window.L) { L.DomEvent.disableClickPropagation($("layers")); }
+  var LABELS = { radar: "Radar", wind: "Wind", temp: "Temperature", air: "Air quality" };
+  function setMode(m) {
+    mode = m; gridSeq++;
+    Array.prototype.forEach.call(document.querySelectorAll("#layers button"), function (b) {
+      var on = b.getAttribute("data-mode") === m; b.classList.toggle("on", on); b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    $("rlabel").textContent = LABELS[m]; $("rcontrols").hidden = m !== "radar"; legendFor(m); setNote();
+    if (!map) { return; }
+    if (gridGroup) { gridGroup.clearLayers(); }
+    if (m === "radar") {
+      if (radar.noaa) { radar.noaa.setOpacity(0.7); }
+      if (radar.n) { showFrame(radar.idx); if (!reduceMotion) { playRadar(); } }
+    } else {
+      stopRadar();
+      radar.layers.forEach(function (l) { l.setOpacity(0); });
+      if (radar.noaa) { radar.noaa.setOpacity(0); }
+      loadGrid();
+    }
+  }
+
   function showError(msg) { var e = $("err"); e.textContent = msg; e.hidden = !msg; }
 
   function load() {
@@ -548,6 +760,7 @@
     ]).then(function (r) {
       renderAlerts(r[1]); renderNow(r[0], r[1]); drawCharts(r[0]); renderDays(r[0], r[1]);
       showError(errs.join(" · "));
+      loadRadar();
       try { localStorage.setItem("mw_place", JSON.stringify(place)); } catch (e) {}
     });
   }
@@ -561,6 +774,12 @@
     });
     showDetail();
   });
+  $("layers").addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest("button") : null;
+    if (b) { setMode(b.getAttribute("data-mode")); }
+  });
+  $("rplay").addEventListener("click", function () { if (radar.timer) { stopRadar(); } else if (radar.n) { playRadar(); } });
+  $("rslider").addEventListener("input", function () { stopRadar(); if (radar.n) { showFrame(+$("rslider").value); } });
   $("refresh").addEventListener("click", load);
   $("zipForm").addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -582,7 +801,7 @@
       load();
     }, function () { showError("Location was blocked. Allow it in Safari settings, or enter a ZIP code."); });
   });
-  document.addEventListener("visibilitychange", function () { if (!document.hidden) { load(); } });
+  document.addEventListener("visibilitychange", function () { if (document.hidden) { stopRadar(); } else { load(); } });
 
   try { var s = JSON.parse(localStorage.getItem("mw_place") || "null"); if (s && s.lat) { place = s; } } catch (e) {}
   window.__wx = { kindFromText: kindFromText, wxIcon: wxIcon };
