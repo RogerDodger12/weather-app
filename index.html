@@ -24,6 +24,7 @@
     --warn: #a4580a;
     --warnbg: #fdf0e0;
     --m1: #1f6fd1; --m2: #0f8f6b; --m3: #8a4fc7; --m4: #b8860b;   /* GFS, ECMWF, GEM, ICON */
+    --sun: #e8a317; --cloud: #9db0c2; --ice: #4a9be0; --rain: #2f78d0; --moon: #b9c4d2;   /* weather icons */
     color-scheme: light;
     --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   }
@@ -32,6 +33,7 @@
       --bg: #10161d; --panel: #18212b; --fg: #e8eef4; --muted: #93a1af; --line: #2a3643;
       --accent: #6aa8f0; --nws: #f0903f; --band: #26405e; --warn: #e6a050; --warnbg: #3a2a16;
       --m1: #6aa8f0; --m2: #3fcfa0; --m3: #b78cf0; --m4: #e8c34a;
+      --sun: #f2c94c; --cloud: #7f93a8; --ice: #9fd0ff; --rain: #6aa8f0; --moon: #dbe3ee;
       color-scheme: dark;
     }
   }
@@ -39,6 +41,7 @@
     --bg: #10161d; --panel: #18212b; --fg: #e8eef4; --muted: #93a1af; --line: #2a3643;
     --accent: #6aa8f0; --nws: #f0903f; --band: #26405e; --warn: #e6a050; --warnbg: #3a2a16;
     --m1: #6aa8f0; --m2: #3fcfa0; --m3: #b78cf0; --m4: #e8c34a;
+    --sun: #f2c94c; --cloud: #7f93a8; --ice: #9fd0ff; --rain: #6aa8f0; --moon: #dbe3ee;
     color-scheme: dark;
   }
   * { box-sizing: border-box; }
@@ -78,7 +81,8 @@
   details.alert[open] summary::after { content: "Hide details ▴"; }
   .adetail { margin-top: 10px; border-top: 1px solid var(--warn); padding-top: 8px; }
   .adetail .pre { white-space: pre-line; }
-  .now { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
+  .now { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .wxicon svg { width: 64px; height: 64px; display: block; }
   .big { font-size: 3rem; font-weight: 700; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; }
   .now .cond { font-size: 1.05rem; }
   .meta { color: var(--muted); font-size: .88rem; margin: 8px 0 0; }
@@ -101,6 +105,19 @@
   .m .v { font-size: 1.35rem; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; }
   .m .r { font-size: .8rem; color: var(--muted); font-variant-numeric: tabular-nums; }
   .m.dis .r { color: var(--warn); font-weight: 600; }
+  .cols { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .col {
+    display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 2px 8px; min-height: 0;
+    border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+    font-variant-numeric: tabular-nums; position: relative;
+  }
+  .col.sel { border-color: var(--accent); background: var(--band); box-shadow: 0 0 0 1px var(--accent); }
+  .col .cd { font-size: .8rem; font-weight: 700; }
+  .col .cdt { font-size: .68rem; color: var(--muted); }
+  .col .ch { font-size: 1.2rem; font-weight: 700; margin-top: 6px; line-height: 1.1; }
+  .col .cl { font-size: .95rem; color: var(--muted); line-height: 1.1; }
+  .col .cp { font-size: .68rem; color: var(--fg); margin-top: 6px; text-align: center; line-height: 1.2; min-height: 2.4em; }
+  .col .dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
   details { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
   summary { cursor: pointer; font-size: .85rem; color: var(--muted); min-height: 28px; }
   .tbl { overflow-x: auto; }
@@ -115,6 +132,7 @@
   .legend .d { width: 10px; height: 10px; border-radius: 50%; }
   .legend .b { width: 14px; height: 8px; border-radius: 4px; background: var(--band); }
   .legend .n { width: 3px; height: 12px; background: var(--nws); border-radius: 2px; }
+  .legend .dot-key { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
   .err { color: var(--warn); font-size: .88rem; margin: 0; }
   .foot { color: var(--muted); font-size: .75rem; }
   .foot a { color: var(--accent); }
@@ -152,11 +170,12 @@
     <svg class="chart" id="pchart" viewBox="0 0 360 92" role="img" aria-label="Hourly precipitation, median of models"></svg>
   </section>
 
-  <section>
-    <p class="label" style="padding-left:2px">7-day forecast</p>
-    <div id="days" style="display:grid;gap:14px"></div>
+  <section class="panel" id="week">
+    <p class="label">5-day forecast · tap a day for details</p>
+    <div class="cols" id="days" role="group" aria-label="Choose a day"></div>
     <div class="legend" id="legend" hidden></div>
   </section>
+  <article class="day" id="detail" hidden></article>
 
   <p class="foot">Models: GFS, ECMWF, Canadian GEM and German ICON via <a href="https://open-meteo.com/">Open-Meteo</a>. Big numbers are the median of the models, with the range underneath. NWS numbers are forecaster-adjusted, so treat them as the anchor. Raw model snow runs high when the ground is warm.</p>
 </main>
@@ -270,6 +289,11 @@
       } else {
         // A night period that starts in the evening has its low the next morning.
         var tgt = ds;
+        if (hr >= 12) {
+          // Also keep this evening's forecast on its own date, so Today still shows an NWS line after the day period has ended.
+          var t0 = days[ds] = days[ds] || {};
+          t0.tonight = { temp: p.temperature, short: p.shortForecast, pop: p.probabilityOfPrecipitation ? p.probabilityOfPrecipitation.value : null };
+        }
         if (hr >= 12) { var d = new Date(Date.UTC(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10) + 1)); tgt = d.toISOString().slice(0, 10); }
         rec = days[tgt] = days[tgt] || {};
         rec.low = p.temperature;
@@ -291,20 +315,63 @@
     return s.lo === s.hi ? fmt(s.mid) + unit : fmt(s.lo) + "–" + fmt(s.hi) + unit;
   }
 
+  /* ---------- Weather icons (inline SVG, colors from theme tokens) ---------- */
+  function kindFromText(t) {
+    t = (t || "").toLowerCase();
+    if (/thunder|t-storm/.test(t)) { return "thunder"; }
+    var snow = /snow|flurr|blizzard/.test(t), wet = /rain|shower|drizzle|sleet|freezing|wintry/.test(t);
+    if (snow && wet) { return "mix"; }
+    if (/sleet|freezing|wintry/.test(t)) { return "mix"; }
+    if (snow) { return "snow"; }
+    if (wet) { return "rain"; }
+    if (/fog|haze|mist|smoke/.test(t)) { return "fog"; }
+    if (/partly|mostly sunny|mostly clear|few clouds|scattered clouds/.test(t)) { return "partly"; }
+    if (/cloud|overcast/.test(t)) { return "cloud"; }
+    if (/sunny|clear|fair/.test(t)) { return "clear"; }
+    return "cloud";
+  }
+  var CLOUD = '<path d="M18 46a10 10 0 0 1 2-19.8A13 13 0 0 1 45 24a11 11 0 0 1 1 22z" fill="var(--cloud)"/>';
+  function sunSvg(cx, cy, r, ray) {
+    var h = '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" fill="var(--sun)"/>';
+    for (var a = 0; a < 8; a++) {
+      var t = a * Math.PI / 4, c = Math.cos(t), sn = Math.sin(t);
+      h += '<line x1="' + (cx + c * (r + 4)).toFixed(1) + '" y1="' + (cy + sn * (r + 4)).toFixed(1) + '" x2="' + (cx + c * (r + ray)).toFixed(1) + '" y2="' + (cy + sn * (r + ray)).toFixed(1) + '" stroke="var(--sun)" stroke-width="3" stroke-linecap="round"/>';
+    }
+    return h;
+  }
+  var MOON = '<path d="M38 12a20 20 0 1 0 14 34A16 16 0 0 1 38 12z" fill="var(--moon)"/>';
+  function wxIcon(kind, isDay, label) {
+    var up = '<g transform="translate(0 -7)">' + CLOUD + "</g>", b = "";
+    switch (kind) {
+      case "clear": b = isDay ? sunSvg(32, 32, 11, 9) : MOON; break;
+      case "partly": b = (isDay ? sunSvg(24, 24, 8, 7) : '<g transform="translate(-8 -8) scale(.7)">' + MOON + "</g>") + '<g transform="translate(6 4) scale(.85)">' + CLOUD + "</g>"; break;
+      case "cloud": b = '<g transform="translate(0 4)">' + CLOUD + "</g>"; break;
+      case "fog": b = up + '<g stroke="var(--cloud)" stroke-width="3" stroke-linecap="round"><line x1="16" y1="45" x2="48" y2="45"/><line x1="20" y1="52" x2="44" y2="52"/></g>'; break;
+      case "rain": b = up + '<g stroke="var(--rain)" stroke-width="3.5" stroke-linecap="round"><line x1="24" y1="47" x2="21" y2="56"/><line x1="33" y1="47" x2="30" y2="56"/><line x1="42" y1="47" x2="39" y2="56"/></g>'; break;
+      case "snow": b = up + '<g fill="var(--ice)"><circle cx="23" cy="50" r="3"/><circle cx="32" cy="56" r="3"/><circle cx="41" cy="50" r="3"/></g>'; break;
+      case "mix": b = up + '<g stroke="var(--rain)" stroke-width="3.5" stroke-linecap="round"><line x1="24" y1="47" x2="21" y2="56"/><line x1="42" y1="47" x2="39" y2="56"/></g><circle cx="32" cy="53" r="3" fill="var(--ice)"/>'; break;
+      case "thunder": b = up + '<polygon points="35,40 25,54 32,54 29,64 42,48 35,48" fill="var(--sun)"/>'; break;
+    }
+    return '<svg viewBox="0 0 64 64" role="img" aria-label="' + esc(label) + '">' + b + "</svg>";
+  }
+
   function renderNow(mod, nws) {
     var html = "";
     var nowNws = nws && nws.now;
     var start = mod ? startIndex(mod, Date.now()) : 0;
     var temps = mod ? stats(mod.models.map(function (m) { return m.temp[start]; })) : null;
     if (nowNws) {
-      html += '<div class="now"><span class="big">' + nowNws.temperature + "°</span><span class="+'"cond"'+">" + esc(nowNws.shortForecast) + "</span></div>";
+      var dayNow = nowNws.isDaytime !== false;
+      html += '<div class="now"><span class="wxicon">' + wxIcon(kindFromText(nowNws.shortForecast), dayNow, nowNws.shortForecast) + '</span><span class="big">' + nowNws.temperature + "°</span><span class="+'"cond"'+">" + esc(nowNws.shortForecast) + "</span></div>";
       var bits = [];
       if (nowNws.windSpeed) { bits.push("Wind " + esc(nowNws.windSpeed) + " " + esc(nowNws.windDirection || "")); }
       if (nowNws.probabilityOfPrecipitation && nowNws.probabilityOfPrecipitation.value !== null) { bits.push(nowNws.probabilityOfPrecipitation.value + "% chance of precipitation this hour"); }
       html += '<p class="meta">NWS hourly forecast' + (bits.length ? " · " + bits.join(" · ") : "") + "</p>";
       if (temps) { html += '<p class="meta">Models this hour: ' + range(temps, Math.round, "°") + "</p>"; }
     } else if (temps) {
-      html += '<div class="now"><span class="big">' + Math.round(temps.mid) + '°</span><span class="cond">Model median</span></div>';
+      var pNow = stats(mod.models.map(function (m) { return m.precip[start]; })), sNow = stats(mod.models.map(function (m) { return m.snow[start]; }));
+      var hrNow = new Date(mod.times[start]).getHours(), word = sNow && sNow.mid >= 0.01 ? "Snow" : (pNow && pNow.mid >= 0.01 ? "Rain" : "Dry");
+      html += '<div class="now"><span class="wxicon">' + wxIcon(kindFromText(word === "Dry" ? "cloudy" : word), hrNow >= 6 && hrNow < 18, word) + '</span><span class="big">' + Math.round(temps.mid) + '°</span><span class="cond">' + word + " (models)</span></div>";
       html += '<p class="meta">Models this hour: ' + range(temps, Math.round, "°") + ". NWS did not respond.</p>";
     } else {
       html = '<span class="sub">No data.</span>';
@@ -338,39 +405,62 @@
       '</div><div class="r">' + (s.n > 1 ? range(s, fmt, unit) + (dis ? " · disagree" : "") : "one model") + (extra || "") + "</div></div>";
   }
 
+  var selected = 0, weekData = [];
+
   function renderDays(mod, nws) {
-    var days = mod ? dailyFromModels(mod) : [];
-    var any = false;
-    var html = days.map(function (d, i) {
-      var per = d.per, hi = stats(per.map(function (p) { return p.high; })), lo = stats(per.map(function (p) { return p.low; }));
-      var pr = stats(per.map(function (p) { return p.precip; })), sn = stats(per.map(function (p) { return p.snow; }));
-      var wd = stats(per.map(function (p) { return p.wind; }));
-      var n = nws && nws.days[d.date];
-      any = true;
-      var line = "";
-      if (n) {
-        line = "<em>NWS</em> " + esc(n.short || "") + (n.high !== undefined ? " · High " + n.high + "°" : "") + (n.low !== undefined ? " · Low " + n.low + "°" : "") +
-          (n.pop !== null && n.pop !== undefined ? " · " + n.pop + "%" : "");
-      }
-      var showSnow = sn && sn.hi >= 0.1;
-      var metrics = metric("High", hi, Math.round, "°", 8) + metric("Low", lo, Math.round, "°", 8) +
-        metric("Rain/melted", pr, r2, " in", 0.4) + (showSnow ? metric("Snow", sn, r1, " in", 3) : metric("Max wind", wd, Math.round, " mph", 12));
-      var rows = "";
-      if (n) {
-        rows += '<tr><td><span class="sw nwsbar"></span>NWS</td><td>' + (n.high !== undefined ? n.high + "°" : "–") + "</td><td>" + (n.low !== undefined ? n.low + "°" : "–") + "</td><td>–</td><td>–</td><td>–</td></tr>";
-      }
-      per.forEach(function (p) {
-        rows += '<tr><td><span class="sw" style="background:' + p.m.color + '"></span>' + p.m.short + "</td><td>" + Math.round(p.high) + "°</td><td>" + Math.round(p.low) +
-          "°</td><td>" + r2(p.precip) + '"</td><td>' + r1(p.snow) + '"</td><td>' + (p.wind === null ? "–" : Math.round(p.wind)) + "</td></tr>";
-      });
-      return '<article class="day"><div class="day-head"><b>' + dayName(d.date, i) + '</b><span class="nwsline">' + line + "</span></div>" +
-        '<div class="metrics">' + metrics + "</div>" +
-        '<details><summary>By model</summary><div class="tbl"><table><thead><tr><th>Source</th><th>High</th><th>Low</th><th>Rain</th><th>Snow</th><th>Wind</th></tr></thead><tbody>' + rows + "</tbody></table></div></details></article>";
-    }).join("");
-    $("days").innerHTML = html || '<div class="panel"><span class="sub">No forecast data.</span></div>';
-    $("legend").hidden = !any;
-    $("legend").innerHTML = MODELS.map(function (m) { return '<span><i class="d" style="background:' + m.color + '"></i>' + m.short + "</span>"; }).join("") +
-      '<span><i class="n"></i>NWS Forecaster</span>';
+    var days = mod ? dailyFromModels(mod).slice(0, 5) : [];
+    weekData = days.map(function (d) {
+      var per = d.per;
+      return {
+        date: d.date, per: per, n: nws && nws.days[d.date],
+        hi: stats(per.map(function (p) { return p.high; })), lo: stats(per.map(function (p) { return p.low; })),
+        pr: stats(per.map(function (p) { return p.precip; })), sn: stats(per.map(function (p) { return p.snow; })),
+        wd: stats(per.map(function (p) { return p.wind; }))
+      };
+    });
+    if (selected >= weekData.length) { selected = 0; }
+    $("days").innerHTML = weekData.map(function (w, i) {
+      var n = w.n || {};
+      var hi = n.high !== undefined ? n.high : (w.hi ? Math.round(w.hi.mid) : "–");   // NWS leads, models fill in
+      var lo = n.low !== undefined ? n.low : (w.lo ? Math.round(w.lo.mid) : "–");
+      var pt = w.sn && w.sn.mid >= 0.1 ? r1(w.sn.mid) + '" snow' : (w.pr && w.pr.mid >= 0.01 ? r2(w.pr.mid) + '" rain' : "Dry");
+      var dis = (w.hi && w.hi.hi - w.hi.lo >= 8) || (w.pr && w.pr.hi - w.pr.lo >= 0.4) || (w.sn && w.sn.hi - w.sn.lo >= 3);
+      var nm = dayName(w.date, i).split(", ");
+      return '<button type="button" class="col' + (i === selected ? " sel" : "") + '" data-i="' + i + '" aria-pressed="' + (i === selected) + '">' +
+        (dis ? '<span class="dot" title="Models disagree"></span>' : "") +
+        '<span class="cd">' + nm[0] + '</span><span class="cdt">' + nm[1] + '</span><span class="ch">' + hi + '°</span><span class="cl">' + lo + '°</span><span class="cp">' + pt + "</span></button>";
+    }).join("") || '<span class="sub">No forecast data.</span>';
+    $("legend").hidden = !weekData.length;
+    $("legend").innerHTML = '<span><i class="n"></i>Highs and lows lead with the NWS</span><span><i class="dot-key"></i>Models disagree</span>';
+    showDetail();
+  }
+
+  function showDetail() {
+    var el = $("detail"), w = weekData[selected];
+    if (!w) { el.hidden = true; return; }
+    var per = w.per, n = w.n, line = "";
+    if (n && n.high === undefined && n.tonight) {
+      line = "<em>NWS</em> Tonight: " + esc(n.tonight.short || "") + " · Low " + n.tonight.temp + "°" +
+        (n.tonight.pop !== null && n.tonight.pop !== undefined ? " · " + n.tonight.pop + "%" : "");
+    } else if (n) {
+      line = "<em>NWS</em> " + esc(n.short || "") + (n.high !== undefined ? " · High " + n.high + "°" : "") + (n.low !== undefined ? " · Low " + n.low + "°" : "") +
+        (n.pop !== null && n.pop !== undefined ? " · " + n.pop + "%" : "");
+    }
+    var showSnow = w.sn && w.sn.hi >= 0.1;
+    var metrics = metric("High", w.hi, Math.round, "°", 8) + metric("Low", w.lo, Math.round, "°", 8) +
+      metric("Rain/melted", w.pr, r2, " in", 0.4) + (showSnow ? metric("Snow", w.sn, r1, " in", 3) : metric("Max wind", w.wd, Math.round, " mph", 12));
+    var rows = "";
+    if (n) {
+      rows += '<tr><td><span class="sw nwsbar"></span>NWS</td><td>' + (n.high !== undefined ? n.high + "°" : "–") + "</td><td>" + (n.low !== undefined ? n.low + "°" : "–") + "</td><td>–</td><td>–</td><td>–</td></tr>";
+    }
+    per.forEach(function (p) {
+      rows += '<tr><td><span class="sw" style="background:' + p.m.color + '"></span>' + p.m.short + "</td><td>" + Math.round(p.high) + "°</td><td>" + Math.round(p.low) +
+        "°</td><td>" + r2(p.precip) + '"</td><td>' + r1(p.snow) + '"</td><td>' + (p.wind === null ? "–" : Math.round(p.wind)) + "</td></tr>";
+    });
+    el.innerHTML = '<div class="day-head"><b>' + dayName(w.date, selected) + '</b><span class="nwsline">' + line + "</span></div>" +
+      '<p class="sub-label" style="margin-top:12px">Models: median, with range underneath</p><div class="metrics" style="margin-top:6px">' + metrics + "</div>" +
+      '<p class="sub-label">By model</p><div class="tbl"><table><thead><tr><th>Source</th><th>High</th><th>Low</th><th>Rain</th><th>Snow</th><th>Wind</th></tr></thead><tbody>' + rows + "</tbody></table></div>";
+    el.hidden = false;
   }
 
   function axisDays(mod, start, n, L, w, T, B, labelY, dayY) {
@@ -447,6 +537,15 @@
     });
   }
 
+  $("days").addEventListener("click", function (ev) {
+    var b = ev.target.closest ? ev.target.closest(".col") : null;
+    if (!b) { return; }
+    selected = +b.getAttribute("data-i");
+    Array.prototype.forEach.call($("days").querySelectorAll(".col"), function (c) {
+      var on = c === b; c.classList.toggle("sel", on); c.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    showDetail();
+  });
   $("refresh").addEventListener("click", load);
   $("zipForm").addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -471,6 +570,7 @@
   document.addEventListener("visibilitychange", function () { if (!document.hidden) { load(); } });
 
   try { var s = JSON.parse(localStorage.getItem("mw_place") || "null"); if (s && s.lat) { place = s; } } catch (e) {}
+  window.__wx = { kindFromText: kindFromText, wxIcon: wxIcon };
   load();
 })();
 </script>
