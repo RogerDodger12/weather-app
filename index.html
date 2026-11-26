@@ -589,10 +589,10 @@
 
   function initMap() {
     if (map || !window.L) { return; }
-    map = L.map("map", { minZoom: 4, maxZoom: 8, scrollWheelZoom: false, dragging: !L.Browser.mobile }).setView([place.lat, place.lon], 7);
+    map = L.map("map", { minZoom: 4, maxZoom: 12, scrollWheelZoom: false, dragging: !L.Browser.mobile }).setView([place.lat, place.lon], 7);
     map.createPane("base"); map.getPane("base").style.zIndex = 200; map.getPane("base").classList.add("base-pane");
     map.createPane("radar"); map.getPane("radar").style.zIndex = 250; map.getPane("radar").style.pointerEvents = "none";
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { pane: "base", maxZoom: 8, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { pane: "base", maxZoom: 12, attribution: "&copy; OpenStreetMap contributors" }).addTo(map);
     marker = L.circleMarker([place.lat, place.lon], { radius: 6, color: "#ffffff", weight: 2, fillColor: "#e8503a", fillOpacity: 1 }).addTo(map);
     gridGroup = L.layerGroup().addTo(map);
     map.on("moveend", function () {
@@ -633,7 +633,7 @@
       if (!frames.length) { throw new Error("no frames"); }
       radar.frames = frames; radar.n = frames.length;
       radar.layers = frames.map(function (f) {
-        return L.tileLayer(d.host + f.path + "/512/{z}/{x}/{y}/2/1_1.png", { pane: "radar", tileSize: 512, zoomOffset: -1, maxZoom: 8, opacity: 0 }).addTo(map);
+        return L.tileLayer(d.host + f.path + "/512/{z}/{x}/{y}/2/1_1.png", { pane: "radar", tileSize: 512, zoomOffset: -1, maxNativeZoom: 8, maxZoom: 12, opacity: 0 }).addTo(map);
       });
       $("rslider").max = radar.n - 1; $("rslider").disabled = false; $("rplay").disabled = false;
       radarNote = "Radar from RainViewer, which combines National Weather Service and other national radar: the last 80 minutes, snow shaded in its own color. The red dot is your location. On a phone, drag with two fingers to move the map.";
